@@ -253,6 +253,11 @@ sbatch eval.sbatch
 - `MAX_NEW_TOKENS`
 - `SKIP_VIZ`
 
+前处理关键参数补充：
+
+- `CATEGORIES=auto`（默认）: 自动从数据集中提取类别，如 `lane_line`。
+- 若手动指定类别，请保证与标注类别一致，否则可能导致输出为空。
+
 评估默认行为：若存在 `dataset/val.jsonl`，优先评估它，否则使用 `dataset/train.jsonl`。
 
 ## 7. 输出产物说明

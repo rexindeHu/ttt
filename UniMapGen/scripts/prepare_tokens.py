@@ -23,7 +23,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--image-size", type=int, default=896)
     parser.add_argument("--coord-num-bins", type=int, default=896)
     parser.add_argument("--token-schema", type=str, default="shared_numbers", choices=["legacy_xy", "shared_numbers"])
-    parser.add_argument("--categories", type=str, default="road")
+    parser.add_argument("--categories", type=str, default="auto")
     parser.add_argument("--max-seq-len", type=int, default=8192)
     parser.add_argument("--disable-legacy-text-prompt-tokens", action="store_true")
     parser.add_argument("--strict", action="store_true")
@@ -37,6 +37,28 @@ def _first_user_text(sample: Dict[str, Any]) -> str:
     return ""
 
 
+def _resolve_categories(rows: List[Dict[str, Any]], categories_arg: str) -> List[str]:
+    raw = str(categories_arg).strip()
+    if raw and raw.lower() != "auto":
+        explicit = [item.strip() for item in raw.split(",") if item.strip()]
+        if explicit:
+            return explicit
+
+    discovered: List[str] = []
+    seen = set()
+    for sample in rows:
+        try:
+            lines = sanitize_lines(extract_assistant_lines(sample))
+        except Exception:
+            continue
+        for line in lines:
+            category = str(line.get("category", "")).strip()
+            if category and category not in seen:
+                seen.add(category)
+                discovered.append(category)
+    return discovered or ["road"]
+
+
 def main() -> None:
     args = parse_args()
 
@@ -47,18 +69,20 @@ def main() -> None:
     output_jsonl.parent.mkdir(parents=True, exist_ok=True)
     summary_json.parent.mkdir(parents=True, exist_ok=True)
 
+    rows = load_jsonl(input_jsonl)
+    if not rows:
+        raise ValueError(f"No rows loaded from {input_jsonl}")
+
+    resolved_categories = _resolve_categories(rows=rows, categories_arg=str(args.categories))
+
     formatter = DiscreteMapTokenFormatter(
         image_size=int(args.image_size),
-        categories=[item.strip() for item in str(args.categories).split(",") if item.strip()],
+        categories=resolved_categories,
         max_seq_len=int(args.max_seq_len),
         coord_num_bins=int(args.coord_num_bins),
         coordinate_token_style=str(args.token_schema),
         include_text_prompt_tokens=not bool(args.disable_legacy_text_prompt_tokens),
     )
-
-    rows = load_jsonl(input_jsonl)
-    if not rows:
-        raise ValueError(f"No rows loaded from {input_jsonl}")
 
     total = 0
     kept = 0
@@ -130,7 +154,8 @@ def main() -> None:
         "token_schema": str(args.token_schema),
         "coord_num_bins": int(args.coord_num_bins),
         "image_size": int(args.image_size),
-        "categories": [item.strip() for item in str(args.categories).split(",") if item.strip()],
+        "categories": resolved_categories,
+        "categories_from": "dataset_auto" if str(args.categories).strip().lower() == "auto" else "args",
         "dropped_ids": dropped_ids[:100],
     }
     summary_json.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
