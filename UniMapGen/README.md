@@ -204,6 +204,9 @@ bash scripts/run_prepare.sh
 说明：
 
 - `train_tokens.jsonl` 中 assistant 已变成离散 token 文本。
+- 默认不写入 `system` 消息（可通过 `INCLUDE_SYSTEM=1` 开启）。
+- 默认使用 `TOKEN_SEP=none`，即 token 连续拼接，不用空格分隔，减少无效空白 token 开销。
+- 不再输出 `target` 字段，避免数据冗余。
 - 该文件用于后续全参训练的数据输入。
 
 ### 步骤 3：启动全参训练
@@ -257,6 +260,14 @@ sbatch eval.sbatch
 
 - `CATEGORIES=auto`（默认）: 自动从数据集中提取类别，如 `lane_line`。
 - 若手动指定类别，请保证与标注类别一致，否则可能导致输出为空。
+- `TOKEN_SEP=none`（默认）: token 紧凑拼接；如需可读性可设为 `space`。
+- `INCLUDE_SYSTEM=0`（默认）: 不输出 system 提示词；设为 `1` 可恢复。
+
+关于“去掉括号和逗号是否会歧义”：
+
+- 不会。离散表示依赖的是保留 token 序列（如 `<line><cat_xxx><pts><12><34>...`），
+  不是依赖 JSON 里的 `[]`、`,` 字符。
+- 解析时使用 `<...>` token 规则做结构恢复，语义边界由控制 token（`<line> <pts> <eol> <eos>`）保证。
 
 评估默认行为：若存在 `dataset/val.jsonl`，优先评估它，否则使用 `dataset/train.jsonl`。
 

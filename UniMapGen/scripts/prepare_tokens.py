@@ -25,6 +25,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--token-schema", type=str, default="shared_numbers", choices=["legacy_xy", "shared_numbers"])
     parser.add_argument("--categories", type=str, default="auto")
     parser.add_argument("--max-seq-len", type=int, default=8192)
+    parser.add_argument("--token-sep", type=str, default="none", choices=["none", "space"])
+    parser.add_argument("--include-system", action="store_true")
     parser.add_argument("--disable-legacy-text-prompt-tokens", action="store_true")
     parser.add_argument("--strict", action="store_true")
     return parser.parse_args()
@@ -57,6 +59,14 @@ def _resolve_categories(rows: List[Dict[str, Any]], categories_arg: str) -> List
                 seen.add(category)
                 discovered.append(category)
     return discovered or ["road"]
+
+
+def _serialize_tokens(formatter: DiscreteMapTokenFormatter, lines: List[Dict[str, Any]], token_sep: str) -> str:
+    spaced = formatter.lines_to_text(lines)
+    known_tokens = formatter.extract_known_tokens(spaced)
+    if token_sep == "space":
+        return " ".join(known_tokens)
+    return "".join(known_tokens)
 
 
 def main() -> None:
@@ -115,7 +125,7 @@ def main() -> None:
                 dropped_ids.append(f"{sample_id}:empty_lines")
                 continue
 
-            token_text = formatter.lines_to_text(lines)
+            token_text = _serialize_tokens(formatter=formatter, lines=lines, token_sep=str(args.token_sep))
             decoded_lines = sanitize_lines(formatter.text_to_lines(token_text))
 
             if not token_text.strip() or not decoded_lines:
@@ -127,18 +137,16 @@ def main() -> None:
 
             user_text = _first_user_text(sample)
             rel_images = list(sample.get("images", []))
+            messages: List[Dict[str, Any]] = []
+            if args.include_system:
+                messages.append({"role": "system", "content": formatter.build_system_prompt()})
+            messages.append({"role": "user", "content": user_text})
+            messages.append({"role": "assistant", "content": token_text})
+
             train_row: Dict[str, Any] = {
                 "id": sample_id,
                 "images": rel_images,
-                "messages": [
-                    {"role": "system", "content": formatter.build_system_prompt()},
-                    {"role": "user", "content": user_text},
-                    {"role": "assistant", "content": token_text},
-                ],
-                "target": {
-                    "token_text": token_text,
-                    "num_lines": len(lines),
-                },
+                "messages": messages,
             }
             out.write(json.dumps(train_row, ensure_ascii=False) + "\n")
             kept += 1
@@ -156,6 +164,8 @@ def main() -> None:
         "image_size": int(args.image_size),
         "categories": resolved_categories,
         "categories_from": "dataset_auto" if str(args.categories).strip().lower() == "auto" else "args",
+        "token_sep": str(args.token_sep),
+        "include_system": bool(args.include_system),
         "dropped_ids": dropped_ids[:100],
     }
     summary_json.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

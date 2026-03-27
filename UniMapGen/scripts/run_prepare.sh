@@ -17,6 +17,8 @@ COORD_NUM_BINS=${COORD_NUM_BINS:-896}
 TOKEN_SCHEMA=${TOKEN_SCHEMA:-shared_numbers}
 CATEGORIES=${CATEGORIES:-auto}
 MAX_SEQ_LEN=${MAX_SEQ_LEN:-8192}
+TOKEN_SEP=${TOKEN_SEP:-none}
+INCLUDE_SYSTEM=${INCLUDE_SYSTEM:-0}
 DISABLE_LEGACY_TEXT_PROMPT_TOKENS=${DISABLE_LEGACY_TEXT_PROMPT_TOKENS:-1}
 STRICT=${STRICT:-0}
 
@@ -38,7 +40,12 @@ cmd=(
   --token-schema "$TOKEN_SCHEMA"
   --categories "$CATEGORIES"
   --max-seq-len "$MAX_SEQ_LEN"
+  --token-sep "$TOKEN_SEP"
 )
+
+if [[ "$INCLUDE_SYSTEM" == "1" ]]; then
+  cmd+=(--include-system)
+fi
 
 if [[ "$DISABLE_LEGACY_TEXT_PROMPT_TOKENS" == "1" ]]; then
   cmd+=(--disable-legacy-text-prompt-tokens)
